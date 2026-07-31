@@ -1,0 +1,23 @@
+command:
+  - "uvicorn"
+  - "app:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+
+env:
+  # Unity Catalog のデータ配置
+  - name: CRM_CATALOG
+    value: "ytcy_azure_east2classic_stable"
+  - name: CRM_SCHEMA
+    value: "crm_help_desk_demo"
+  # SQL Warehouse（app リソースとしても付与するが env でも明示）
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: "9c8fac7a0b250221"
+  # 基盤モデル（チャーン解説・推奨アクション生成）
+  - name: SERVING_ENDPOINT
+    value: "databricks-claude-sonnet-4-5"
+  # Genie Space（自然言語探索）
+  - name: GENIE_SPACE_ID
+    value: "01f18c87da681bfca2d7e7a02c07e400"

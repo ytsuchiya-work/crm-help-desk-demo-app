@@ -20,6 +20,12 @@ LOCAL_PROFILE = os.environ.get("DATABRICKS_CONFIG_PROFILE") or os.environ.get("D
 def get_workspace_client() -> WorkspaceClient:
     if IS_DATABRICKS_APP:
         return WorkspaceClient()
+    # ローカル: 明示的な host+token が env にあればそれを使う（同一ホストに複数プロファイルが
+    # あると CLI 認証が「複数一致」で失敗するため）。無ければプロファイルにフォールバック。
+    host = os.environ.get("DATABRICKS_HOST")
+    token = os.environ.get("DATABRICKS_TOKEN")
+    if host and token:
+        return WorkspaceClient(host=host, token=token, auth_type="pat")
     return WorkspaceClient(profile=LOCAL_PROFILE)
 
 

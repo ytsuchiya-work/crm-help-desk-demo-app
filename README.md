@@ -67,12 +67,12 @@ CS/AM チームが日々の運用で使う 1 画面完結の CRM です。主な
 
 - **フロントエンド**: React 19 + TypeScript + Vite、React Router、Recharts（チャート）、lucide-react（アイコン）。
   CSS 変数によるライト/ダークテーマ。
-- **バックエンド**: FastAPI（Python 3.11+）、`databricks-sql-connector`（SQL Warehouse 直読）、
-  `openai` クライアント経由で Databricks 基盤モデル、`databricks-sdk`（Genie / 認証）。
-- **データ基盤**: Unity Catalog（Delta）、Serverless SQL Warehouse（Statement Execution）。
+- **バックエンド**: FastAPI（Python 3.11+）、`databricks-sdk` に統一
+  （SQL Warehouse の Statement Execution / 基盤モデルの serving_endpoints.query / Genie / 認証）。
+- **データ基盤**: Unity Catalog（Delta）、Serverless SQL Warehouse（Statement Execution API）。
 - **AI**: Databricks Foundation Model `databricks-claude-sonnet-4-5`（推奨アクション生成）、
   AI/BI Genie Space（自然言語 → SQL）。
-- **実行環境**: Databricks Apps（uv によるパッケージ管理、`app.yaml` で設定）。
+- **実行環境**: Databricks Apps（pip + `requirements.txt`、`app.yaml` で設定）。
 
 ## 5. アーキテクチャ
 
@@ -118,29 +118,41 @@ CS/AM チームが日々の運用で使う 1 画面完結の CRM です。主な
 - Databricks CLI（v1.x）で対象ワークスペースに認証済み（プロファイル例: `Azure-ytcy-east2`）
 - Serverless SQL Warehouse、`databricks-claude-sonnet-4-5` エンドポイント、Genie Space
 
+デプロイ済みアプリ URL:
+`https://crm-help-desk-demo-7405605463330453.13.azure.databricksapps.com`
+
+### 依存関係
+デプロイ対象アプリの依存は **`requirements.txt`**（pip 方式）で管理します
+（`fastapi` / `uvicorn` / `databricks-sdk==0.41.0` / `pydantic`）。
+ローカルのデータ生成スクリプトのみ `databricks-sql-connector` が追加で必要なため
+`requirements-dev.txt` を用意しています。
+
 ### データ投入
 ```bash
 export DATABRICKS_PROFILE=Azure-ytcy-east2
+pip install -r requirements-dev.txt
 python data/generate_data.py
 ```
 
 ### ローカル実行
 ```bash
-uv sync
+pip install -r requirements.txt
 # バックエンド（フロントの /api をプロキシ）
 export DATABRICKS_HOST=https://adb-7405605463330453.13.azuredatabricks.net
 export DATABRICKS_TOKEN=$(databricks auth token --host $DATABRICKS_HOST --profile Azure-ytcy-east2 | jq -r .access_token)
-uv run uvicorn app:app --port 8000
+uvicorn app:app --port 8000
 # フロントエンド（別ターミナル、開発サーバ）
 cd frontend && npm install && npm run dev   # http://localhost:5173
 ```
 
-### 本番ビルド & デプロイ
+### 本番ビルド & デプロイ（Git フォルダ経由）
+コードは GitHub と Databricks Git フォルダで連携しています。デプロイ手順:
 ```bash
-cd frontend && npm run build && cd ..        # frontend/dist を生成
-databricks sync . /Workspace/Users/<you>/crm-help-desk-demo-app \
-  --exclude node_modules --exclude .venv --exclude __pycache__ \
-  --exclude .git --exclude "frontend/node_modules" --profile Azure-ytcy-east2
+# 1) フロントをビルドしてコミット（frontend/dist を含める）
+cd frontend && npm run build && cd ..
+git add -A && git commit -m "..." && git push origin main
+# 2) Databricks Git フォルダを最新化（REST: PATCH /api/2.0/repos/<id> {"branch":"main"}）
+# 3) Git フォルダのパスからデプロイ
 databricks apps deploy crm-help-desk-demo \
   --source-code-path /Workspace/Users/<you>/crm-help-desk-demo-app --profile Azure-ytcy-east2
 ```
@@ -161,6 +173,14 @@ databricks apps deploy crm-help-desk-demo \
   **id 昇順ソート必須**、`instructions.text_instructions` は**1 要素のみ**（複数は 400）。
 - **`databricks apps update` は全置換**: 一部フィールドだけ渡すと `resources` が消えて
   アプリがクラッシュする。update には必ず description + resources のフル JSON を渡す。
+- **Apps ビルドは pip 方式を採用**: 社内 pypi proxy が不安定な時、`uv`（pyproject.toml + uv.lock）
+  だと特定 wheel（`databricks-sdk`）で `client error (Connect)` が頻発し失敗した。
+  `pyproject.toml`/`uv.lock` を外して **`requirements.txt` のみ**にすると pip 方式で解決され、
+  同じ proxy 状況でも安定してインストールできた。依存パッケージ数も 55→27 に削減。
+- **依存は最小限に**: SQL 接続は `databricks-sql-connector`（pyarrow/pandas 等が巨大）ではなく
+  `databricks-sdk` の Statement Execution API を使用。LLM も `openai` ではなく SDK の
+  `serving_endpoints.query` を使用。Statement Execution API は**全列を文字列で返す**ため、
+  スキーマの型情報で数値/真偽値に復元している（`server/db.py`）。
 - **frontend/dist を Git に含める**: 標準の Python `.gitignore` は `dist/` を除外するため、
   デプロイに必要な `frontend/dist` が漏れる。本リポジトリの `.gitignore` は除外していない。
 - **SQL Warehouse は Serverless 推奨**: 停止状態でも初回クエリで自動起動する。
@@ -175,7 +195,8 @@ databricks apps deploy crm-help-desk-demo \
 crm-help-desk-demo-app/
 ├── app.py                 # FastAPI エントリポイント（API + SPA 配信）
 ├── app.yaml               # Databricks Apps 設定（env / command）
-├── pyproject.toml         # Python 依存（uv）
+├── requirements.txt       # デプロイ用 Python 依存（pip）
+├── requirements-dev.txt   # ローカルのデータ生成用（+databricks-sql-connector）
 ├── data/
 │   └── generate_data.py   # 合成データ生成 & UC 投入
 ├── server/

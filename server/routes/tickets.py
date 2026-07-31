@@ -10,7 +10,8 @@ router = APIRouter()
 
 @router.get("/tickets")
 def list_tickets(status: str | None = None, priority: str | None = None,
-                 account_id: str | None = None, q: str | None = None):
+                 account_id: str | None = None, q: str | None = None,
+                 company: str | None = None):
     where = []
     params = []
     if status:
@@ -21,6 +22,8 @@ def list_tickets(status: str | None = None, priority: str | None = None,
         where.append("t.account_id = ?"); params.append(account_id)
     if q:
         where.append("t.subject LIKE ?"); params.append(f"%{q}%")
+    if company:
+        where.append("a.company_name LIKE ?"); params.append(f"%{company}%")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     rows = query(f"""
         SELECT t.ticket_id, t.account_id, a.company_name, t.subject, t.category,

@@ -19,6 +19,7 @@ export default function Tickets() {
   const [status, setStatus] = useState('')
   const [priority, setPriority] = useState('')
   const [q, setQ] = useState('')
+  const [company, setCompany] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
 
@@ -28,6 +29,7 @@ export default function Tickets() {
     if (status) params.status = status
     if (priority) params.priority = priority
     if (q) params.q = q
+    if (company) params.company = company
     api.tickets(params).then((r) => setRows(r.tickets)).catch(console.error).finally(() => setLoading(false))
     api.ticketStats().then(setStats).catch(console.error)
   }
@@ -55,9 +57,13 @@ export default function Tickets() {
 
       <Card className="card-pad" style={{ marginBottom: 18 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ flex: 1, minWidth: 180 }}>
             <label className="field-label">検索（件名）</label>
             <input className="input" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} placeholder="件名で検索…" />
+          </div>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label className="field-label">企業名</label>
+            <input className="input" value={company} onChange={(e) => setCompany(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} placeholder="企業名で検索…" />
           </div>
           <div style={{ width: 150 }}>
             <label className="field-label">ステータス</label>

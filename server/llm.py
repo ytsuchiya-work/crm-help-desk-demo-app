@@ -1,17 +1,28 @@
-"""Databricks 基盤モデル (Claude) クライアント。チャーン解説・推奨アクション生成に使用。"""
-import os
+"""Databricks 基盤モデル (Claude) クライアント。チャーン解説・推奨アクション生成に使用。
+
+依存を軽くするため openai パッケージは使わず、databricks-sdk の
+serving_endpoints.query を直接使う（httpx/jiter 等の追加依存を避ける）。
+"""
 import json
-from openai import OpenAI
-from .config import get_token, get_host, SERVING_ENDPOINT
+from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
+from .config import get_workspace_client, SERVING_ENDPOINT
 
 
-def _client() -> OpenAI:
-    token = get_token()
-    # AI Gateway URL が設定されていればそちらを優先、なければ serving-endpoints パス（Azure 既定）
-    base = os.environ.get("AI_GATEWAY_URL")
-    if not base:
-        base = f"{get_host().rstrip('/')}/serving-endpoints"
-    return OpenAI(api_key=token, base_url=base.rstrip("/"))
+def _chat(system: str, user: str, max_tokens: int = 1200, temperature: float = 0.4) -> str:
+    w = get_workspace_client()
+    resp = w.serving_endpoints.query(
+        name=SERVING_ENDPOINT,
+        messages=[
+            ChatMessage(role=ChatMessageRole.SYSTEM, content=system),
+            ChatMessage(role=ChatMessageRole.USER, content=user),
+        ],
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    # choices[0].message.content
+    if resp.choices and resp.choices[0].message:
+        return resp.choices[0].message.content or ""
+    return ""
 
 
 def recommend_actions(account: dict, metrics: dict, tickets_summary: dict, score: dict) -> dict:
@@ -44,13 +55,7 @@ def recommend_actions(account: dict, metrics: dict, tickets_summary: dict, score
     }
     user = "以下のデータに基づき JSON を生成してください。\n" + json.dumps(ctx, ensure_ascii=False, indent=2)
 
-    resp = _client().chat.completions.create(
-        model=SERVING_ENDPOINT,
-        messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-        max_tokens=1200,
-        temperature=0.4,
-    )
-    text = resp.choices[0].message.content.strip()
+    text = _chat(sys, user).strip()
     # ```json フェンス除去
     if text.startswith("```"):
         text = text.split("```", 2)[1]

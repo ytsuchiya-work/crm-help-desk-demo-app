@@ -5,9 +5,8 @@ description = "CloudNest OfficePulse CRM ヘルプデスク Churn デモ (Databr
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
+    "uvicorn>=0.32.0",
     "databricks-sdk>=0.41.0",
-    "databricks-sql-connector>=3.4.0",
     "openai>=1.54.0",
     "pydantic>=2.9.0",
     "python-multipart>=0.0.12",

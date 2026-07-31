@@ -7,6 +7,11 @@ command:
   - "8000"
 
 env:
+  # uv のダウンロードを直列化しタイムアウトを延長（社内 pypi proxy が不安定なため）
+  - name: UV_CONCURRENT_DOWNLOADS
+    value: "1"
+  - name: UV_HTTP_TIMEOUT
+    value: "300"
   # Unity Catalog のデータ配置
   - name: CRM_CATALOG
     value: "ytcy_azure_east2classic_stable"

@@ -238,31 +238,73 @@ def gen_tickets(accounts):
     return tickets, events
 
 
-def gen_schedule(accounts):
+def gen_schedule(accounts, tickets):
+    """スケジュール生成。レコメンド(リスク対応)予定は、その顧客の高優先度/解約系
+    チケットに紐づけて ticket_id を持たせる（UI でどの問い合わせ起点かを辿れるように）。"""
+    # 顧客ごとに紐付け候補チケット（高優先度・未解決・解約系を優先）
+    from collections import defaultdict
+    tks = defaultdict(list)
+    for t in tickets:
+        tks[t["account_id"]].append(t)
+
+    def pick_ticket(account_id):
+        cands = tks.get(account_id, [])
+        if not cands:
+            return None
+        # 解約検討 > 高優先度未解決 > その他 の優先度で選ぶ
+        churn = [t for t in cands if "解約" in (t.get("subject") or "")]
+        urgent_open = [t for t in cands if t.get("priority") in ("high", "urgent")
+                       and t.get("status") in ("new", "open", "pending")]
+        pool = churn or urgent_open or cands
+        return random.choice(pool)["ticket_id"]
+
     rows = []
     sid = 0
-    # 今週 (2026-07-27 〜 07-31) の担当者別予定
     week_days = [dt.date(2026, 7, 27) + dt.timedelta(days=i) for i in range(5)]
     for a in accounts:
         if a["status"] in ("prospect",):
             continue
-        n = random.randint(0, 2)
-        for _ in range(n):
+        is_risk = a["status"] in ("churn_risk", "churned")
+        # リスク顧客は必ず 1〜2 件のレコメンド予定を持たせる（デモ映えのため）
+        n = random.randint(1, 2) if is_risk else random.randint(0, 2)
+        for j in range(n):
             sid += 1
             d = random.choice(week_days)
-            kind = "confirmed" if random.random() > 0.4 else "recommended"
+            # リスク顧客は最低1件をレコメンドにする
+            kind = "recommended" if (is_risk and (j == 0 or random.random() > 0.4)) else "confirmed"
             titles_active = ["定例フォローアップ", "利用状況レビュー", "拡大提案", "契約更新相談"]
             titles_risk = ["解約リスクヒアリング", "契約更新交渉", "利用改善提案", "エグゼクティブ訪問"]
-            title = random.choice(titles_risk if a["status"] in ("churn_risk", "churned") else titles_active)
+            title = random.choice(titles_risk if is_risk else titles_active)
+            # レコメンドは問い合わせに紐づける
+            ticket_id = pick_ticket(a["account_id"]) if kind == "recommended" else None
             rows.append({
                 "schedule_id": f"SC-{100 + sid}", "account_id": a["account_id"],
                 "owner": a["csm_owner"], "date": d.isoformat(),
                 "title": f"{a['company_name']} {title}",
                 "kind": kind,
+                "ticket_id": ticket_id,
                 "start_time": random.choice(["10:00", "11:00", "13:00", "14:00", "15:30", "16:00"]),
                 "duration_min": random.choice([30, 45, 60]),
             })
     return rows
+
+
+def gen_genie_history():
+    """Genie チャット履歴（デモ用の初期履歴 2 件）。セッションを跨いで残ることを示す。"""
+    base = dt.datetime.combine(TODAY, dt.time(9, 0))
+    return [
+        {
+            "history_id": "GH-1", "conversation_id": "seed-conv-1",
+            "role": "user", "content": "解約リスクが高いアカウントを教えて",
+            "query": None, "created_at": (base - dt.timedelta(days=1, hours=2)).isoformat(sep=" ", timespec="seconds"),
+        },
+        {
+            "history_id": "GH-2", "conversation_id": "seed-conv-1",
+            "role": "bot", "content": "解約リスク(churn_risk)のアカウントは3件あります: グリーンエナジー株式会社、関西フードサービス株式会社、まるみ食品工業。",
+            "query": "SELECT company_name FROM accounts WHERE status = 'churn_risk'",
+            "created_at": (base - dt.timedelta(days=1, hours=2)).isoformat(sep=" ", timespec="seconds"),
+        },
+    ]
 
 
 def gen_feedback():
@@ -344,13 +386,14 @@ def main():
     accounts, contracts = gen_accounts_contracts()
     usage = gen_usage_metrics(accounts)
     tickets, events = gen_tickets(accounts)
-    schedule = gen_schedule(accounts)
+    schedule = gen_schedule(accounts, tickets)
     feedback = gen_feedback()
     churn_hist = gen_churn_history()
+    genie_history = gen_genie_history()
 
     print(f"generated: accounts={len(accounts)} contracts={len(contracts)} usage={len(usage)} "
           f"tickets={len(tickets)} events={len(events)} schedule={len(schedule)} "
-          f"feedback={len(feedback)} churn_hist={len(churn_hist)}")
+          f"feedback={len(feedback)} churn_hist={len(churn_hist)} genie_history={len(genie_history)}")
 
     ddl = {
         "accounts": """(
@@ -380,7 +423,7 @@ def main():
         )""",
         "schedule": """(
             schedule_id STRING, account_id STRING, owner STRING, date DATE,
-            title STRING, kind STRING, start_time STRING, duration_min INT
+            title STRING, kind STRING, ticket_id STRING, start_time STRING, duration_min INT
         )""",
         "feedback": """(
             feedback_id STRING, title STRING, detail STRING, priority STRING,
@@ -389,12 +432,16 @@ def main():
         "churn_history": """(
             month DATE, churned_accounts INT, new_accounts INT, churned_arr_jpy BIGINT
         )""",
+        "genie_history": """(
+            history_id STRING, conversation_id STRING, role STRING, content STRING,
+            query STRING, created_at TIMESTAMP
+        )""",
     }
 
     data_map = {
         "accounts": accounts, "contracts": contracts, "usage_metrics": usage,
         "tickets": tickets, "ticket_events": events, "schedule": schedule,
-        "feedback": feedback, "churn_history": churn_hist,
+        "feedback": feedback, "churn_history": churn_hist, "genie_history": genie_history,
     }
 
     with sql.connect(server_hostname=hostname, http_path=http_path, access_token=token) as conn:

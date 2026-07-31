@@ -153,6 +153,9 @@ button { font-family: inherit; cursor: pointer; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 table.data th { text-align: left; padding: 12px 14px; color: var(--text-muted); font-weight: 600; font-size: 12.5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 table.data td { padding: 13px 14px; border-bottom: 1px solid var(--border); }
+/* 狭い幅でも企業名などが極端に縦積みにならないよう最小幅を確保（溢れは横スクロール） */
+table.data.wide { min-width: 860px; }
+table.data.wide td, table.data.wide th { white-space: nowrap; }
 table.data tbody tr { transition: background .1s; }
 table.data tbody tr.clickable:hover { background: var(--bg-subtle); cursor: pointer; }
 table.data tbody tr:last-child td { border-bottom: none; }
@@ -215,3 +218,19 @@ table.data tbody tr:last-child td { border-bottom: none; }
 .bubble.user { align-self: flex-end; background: var(--accent); color: var(--accent-fg); border-bottom-right-radius: 4px; }
 .bubble.bot { align-self: flex-start; background: var(--bg-subtle); color: var(--text); border-bottom-left-radius: 4px; }
 .bubble.bot code { font-family: ui-monospace, monospace; font-size: 12px; }
+
+/* Genie「考えています…」の生成中インジケータ */
+.bubble.thinking { display: flex; align-items: center; gap: 10px; }
+.thinking-text { background: linear-gradient(90deg, var(--text-faint) 25%, var(--accent) 50%, var(--text-faint) 75%);
+  background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shimmer 1.4s linear infinite; font-weight: 600; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.typing-dots span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  margin: 0 2px; animation: bounce 1.2s infinite ease-in-out; }
+.typing-dots span:nth-child(2) { animation-delay: .2s; }
+.typing-dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes bounce { 0%, 80%, 100% { transform: scale(0.6); opacity: .5; } 40% { transform: scale(1); opacity: 1; } }
+
+.followup-chip { padding: 6px 12px; border-radius: 999px; border: 1px dashed var(--border-strong);
+  background: var(--bg-elevated); font-size: 12.5px; color: var(--text); cursor: pointer; transition: background .12s, border-color .12s; }
+.followup-chip:hover { background: var(--accent-soft); border-color: var(--accent); }

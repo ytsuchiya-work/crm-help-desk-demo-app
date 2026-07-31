@@ -38,11 +38,15 @@ export const api = {
   replyTicket: (id: string, body: any) => req<any>(`/tickets/${id}/reply`, { method: 'POST', body: JSON.stringify(body) }),
   createTicket: (body: any) => req<any>('/tickets', { method: 'POST', body: JSON.stringify(body) }),
   schedule: () => req<any>('/schedule'),
-  onboarding: () => req<any>('/onboarding'),
+  createSchedule: (body: any) => req<any>('/schedule', { method: 'POST', body: JSON.stringify(body) }),
+  updateSchedule: (id: string, body: any) => req<any>(`/schedule/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteSchedule: (id: string) => req<any>(`/schedule/${id}`, { method: 'DELETE' }),
   feedback: () => req<any>('/feedback'),
   addFeedback: (body: any) => req<any>('/feedback', { method: 'POST', body: JSON.stringify(body) }),
   updateFeedback: (id: string, status: string) => req<any>(`/feedback/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   genieStatus: () => req<any>('/genie/status'),
+  genieHistory: () => req<any>('/genie/history'),
+  clearGenieHistory: () => req<any>('/genie/history', { method: 'DELETE' }),
   genieAsk: (message: string, conversation_id?: string) =>
     req<any>('/genie/ask', { method: 'POST', body: JSON.stringify({ message, conversation_id }) }),
 }

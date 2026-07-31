@@ -86,7 +86,7 @@ export default function Dashboard() {
         <Card className="card-pad">
           <h3 className="section-title">クイックアクセス</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <QuickLink label="解約リスクを確認" onClick={() => nav('/churn')} />
+            <QuickLink label="解約リスクを確認" onClick={() => nav('/accounts?band=高')} />
             <QuickLink label="アカウント一覧を見る" onClick={() => nav('/accounts')} />
             <QuickLink label="ヘルプデスク（チケット）" onClick={() => nav('/tickets')} />
             <QuickLink label="今週のスケジュール" onClick={() => nav('/schedule')} />

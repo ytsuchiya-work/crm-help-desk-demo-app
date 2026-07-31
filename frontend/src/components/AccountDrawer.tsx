@@ -4,101 +4,10 @@ import {
 } from 'recharts'
 import { Sparkles, X, TrendingDown, AlertTriangle } from 'lucide-react'
 import { api, yen, bandClass } from '../api'
-import { Card, Loading, Badge, StatusBadge } from '../components/ui'
+import { Card, Loading, Badge } from './ui'
 
-export default function ChurnRisk() {
-  const [rows, setRows] = useState<any[]>([])
-  const [selected, setSelected] = useState<string | null>(null)
-
-  useEffect(() => {
-    api.atRisk().then((r) => setRows(r.accounts)).catch(console.error)
-  }, [])
-
-  if (!rows.length) return <Loading />
-
-  const atRisk = rows.filter((r) => r.risk_band !== '低')
-
-  return (
-    <>
-      <h1 className="page-title">チャーンリスク可視化</h1>
-      <p className="page-sub">利用シグナル・サポート状況・契約情報からリスクをスコアリングし、推奨アクションを提案</p>
-
-      <div className="kpi-grid">
-        <div className="kpi">
-          <div className="label">高リスク</div>
-          <div className="value" style={{ color: 'var(--danger)' }}>{rows.filter((r) => r.risk_band === '高').length}</div>
-        </div>
-        <div className="kpi">
-          <div className="label">中リスク</div>
-          <div className="value" style={{ color: 'var(--warn)' }}>{rows.filter((r) => r.risk_band === '中').length}</div>
-        </div>
-        <div className="kpi">
-          <div className="label">リスク対象 ARR 合計</div>
-          <div className="value" style={{ fontSize: 22 }}>{yen(atRisk.reduce((s, r) => s + (r.arr_jpy || 0), 0))}</div>
-        </div>
-        <div className="kpi">
-          <div className="label">全アカウント数</div>
-          <div className="value">{rows.length}</div>
-        </div>
-      </div>
-
-      <Card>
-        <div className="table-wrap">
-          <table className="data">
-            <thead>
-              <tr>
-                <th style={{ width: 130 }}>リスクスコア</th>
-                <th>企業名</th>
-                <th>ステータス</th>
-                <th>業界</th>
-                <th>プラン</th>
-                <th>ARR</th>
-                <th>担当</th>
-                <th style={{ width: 60 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.account_id} className="clickable" onClick={() => setSelected(r.account_id)}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <RiskBar score={r.risk_score} />
-                      <Badge kind={bandClass(r.risk_band)}>{r.risk_score}</Badge>
-                    </div>
-                  </td>
-                  <td style={{ fontWeight: 600 }}>{r.company_name}</td>
-                  <td><StatusBadge status={r.status} /></td>
-                  <td>{r.industry}</td>
-                  <td>{r.plan}</td>
-                  <td>{yen(r.arr_jpy)}</td>
-                  <td>{r.csm_owner}</td>
-                  <td>
-                    <button className="btn sm primary" onClick={(e) => { e.stopPropagation(); setSelected(r.account_id) }}>
-                      <Sparkles size={14} /> 分析
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {selected && <ChurnDrawer accountId={selected} onClose={() => setSelected(null)} />}
-    </>
-  )
-}
-
-function RiskBar({ score }: { score: number }) {
-  const color = score >= 60 ? 'var(--danger)' : score >= 35 ? 'var(--warn)' : 'var(--ok)'
-  return (
-    <div className="progress" style={{ width: 70 }}>
-      <div style={{ width: `${score}%`, background: color }} />
-    </div>
-  )
-}
-
-function ChurnDrawer({ accountId, onClose }: { accountId: string; onClose: () => void }) {
+/** アカウント詳細＋チャーンリスク＋AI推奨アクションを1つのドロワーで表示。 */
+export default function AccountDrawer({ accountId, onClose }: { accountId: string; onClose: () => void }) {
   const [detail, setDetail] = useState<any>(null)
   const [rec, setRec] = useState<any>(null)
   const [loadingRec, setLoadingRec] = useState(false)
@@ -127,12 +36,14 @@ function ChurnDrawer({ accountId, onClose }: { accountId: string; onClose: () =>
   const a = detail.account
   const score = detail.score
   const metrics = detail.metrics
+  const tickets = detail.tickets || []
   const chartData = metrics.map((m: any) => ({
     week: m.week_start.slice(5),
     login: Math.round(m.login_rate * 100),
     detect: Math.round(m.attendance_detect_rate * 100),
     install: Math.round(m.install_rate * 100),
   }))
+  const scoreColor = score.risk_band === '高' ? 'var(--danger)' : score.risk_band === '中' ? 'var(--warn)' : 'var(--ok)'
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -149,9 +60,7 @@ function ChurnDrawer({ accountId, onClose }: { accountId: string; onClose: () =>
           {/* リスクスコア */}
           <div style={{ display: 'flex', gap: 24, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
             <div className="risk-meter">
-              <div className="risk-num" style={{ color: score.risk_band === '高' ? 'var(--danger)' : score.risk_band === '中' ? 'var(--warn)' : 'var(--ok)' }}>
-                {score.risk_score}
-              </div>
+              <div className="risk-num" style={{ color: scoreColor }}>{score.risk_score}</div>
               <div>
                 <Badge kind={bandClass(score.risk_band)}>リスク {score.risk_band}</Badge>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>チャーンスコア（0-100）</div>
@@ -201,6 +110,20 @@ function ChurnDrawer({ accountId, onClose }: { accountId: string; onClose: () =>
               </AreaChart>
             </ResponsiveContainer>
           </div>
+
+          {/* 直近の問い合わせ */}
+          {tickets.length > 0 && (
+            <>
+              <h3 className="section-title">直近の問い合わせ（{tickets.length}件）</h3>
+              <div className="pill-row" style={{ marginBottom: 20 }}>
+                {tickets.slice(0, 6).map((t: any) => (
+                  <span className="chip" key={t.ticket_id} title={t.status}>
+                    {t.subject}{t.csat != null ? `（★${t.csat}）` : ''}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
 
           {/* LLM 推奨アクション */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>

@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, Sparkles } from 'lucide-react'
+import { Send, Sparkles, History, Trash2 } from 'lucide-react'
 import { api } from '../api'
 import { Card, Badge } from '../components/ui'
 
-type Msg = { role: 'user' | 'bot'; text: string; query?: string; table?: { columns: string[]; rows: any[][] } }
+type Msg = {
+  role: 'user' | 'bot'
+  text: string
+  query?: string | null
+  table?: { columns: string[]; rows: any[][] } | null
+  followups?: string[]
+  historical?: boolean
+}
 
 const SUGGESTIONS = [
   '解約リスクが高いアカウントを教えて',
@@ -18,9 +25,23 @@ export default function Genie() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [conv, setConv] = useState<string | undefined>()
+  const [histLoaded, setHistLoaded] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { api.genieStatus().then((r) => setEnabled(r.enabled)).catch(() => setEnabled(false)) }, [])
+  useEffect(() => {
+    api.genieStatus().then((r) => setEnabled(r.enabled)).catch(() => setEnabled(false))
+    // 永続化された履歴を読み込む（セッションが切れても過去の問い合わせを表示）
+    api.genieHistory().then((r) => {
+      const hist: Msg[] = (r.history || []).map((h: any) => ({
+        role: h.role === 'user' ? 'user' : 'bot',
+        text: h.content,
+        query: h.query,
+        historical: true,
+      }))
+      setMsgs(hist)
+    }).catch(() => { /* noop */ }).finally(() => setHistLoaded(true))
+  }, [])
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, loading])
 
   const ask = (text: string) => {
@@ -31,19 +52,33 @@ export default function Genie() {
     api.genieAsk(text, conv)
       .then((r) => {
         setConv(r.conversation_id)
-        setMsgs((m) => [...m, { role: 'bot', text: r.answer, query: r.query, table: r.table }])
+        setMsgs((m) => [...m, { role: 'bot', text: r.answer, query: r.query, table: r.table, followups: r.followups }])
       })
       .catch((e) => setMsgs((m) => [...m, { role: 'bot', text: `エラー: ${e.message}` }]))
       .finally(() => setLoading(false))
   }
 
+  const clearHistory = () => {
+    if (!confirm('保存済みのチャット履歴をすべて削除しますか？')) return
+    api.clearGenieHistory().then(() => { setMsgs([]); setConv(undefined) }).catch(console.error)
+  }
+
+  // 最後の bot メッセージのフォローアップ（生成中でなければ）
+  const lastBot = [...msgs].reverse().find((m) => m.role === 'bot' && !m.historical)
+  const followups = !loading && lastBot?.followups?.length ? lastBot.followups : []
+
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <h1 className="page-title" style={{ margin: 0 }}>Genie</h1>
-        <Badge kind="info"><Sparkles size={13} /> AI/BI Genie</Badge>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h1 className="page-title" style={{ margin: 0 }}>Genie</h1>
+          <Badge kind="info"><Sparkles size={13} /> AI/BI Genie</Badge>
+        </div>
+        {msgs.length > 0 && (
+          <button className="btn sm" onClick={clearHistory}><Trash2 size={14} /> 履歴をクリア</button>
+        )}
       </div>
-      <p className="page-sub">利用状況やチャーンを自然言語で探索（Databricks Genie Space に接続）</p>
+      <p className="page-sub">利用状況やチャーンを自然言語で探索（Databricks Genie Space に接続）。チャット履歴は保存され、次回アクセス時も表示されます。</p>
 
       {enabled === false && (
         <Card className="card-pad" style={{ marginBottom: 16, borderLeft: '3px solid var(--warn)' }}>
@@ -55,7 +90,7 @@ export default function Genie() {
 
       <Card className="card-pad" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 260px)', minHeight: 420 }}>
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4 }}>
-          {msgs.length === 0 && (
+          {histLoaded && msgs.length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--text-faint)', marginTop: 40 }}>
               <Sparkles size={30} style={{ marginBottom: 10, opacity: 0.6 }} />
               <div style={{ marginBottom: 18 }}>自然言語で質問してください。</div>
@@ -66,9 +101,18 @@ export default function Genie() {
               </div>
             </div>
           )}
+
+          {/* 過去履歴の見出し */}
+          {msgs.some((m) => m.historical) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-faint)', fontSize: 12, margin: '4px 0 12px' }}>
+              <History size={14} /> 保存された過去のチャット履歴
+              <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            </div>
+          )}
+
           <div className="chat-log">
             {msgs.map((m, i) => (
-              <div key={i} className={`bubble ${m.role}`}>
+              <div key={i} className={`bubble ${m.role}`} style={m.historical ? { opacity: 0.72 } : undefined}>
                 {m.text}
                 {m.query && (
                   <details style={{ marginTop: 8 }}>
@@ -90,9 +134,29 @@ export default function Genie() {
                 )}
               </div>
             ))}
-            {loading && <div className="bubble bot"><span className="spinner" /> Genie が考えています…</div>}
+
+            {loading && (
+              <div className="bubble bot thinking">
+                <span className="typing-dots"><span /><span /><span /></span>
+                <span className="thinking-text">Genie が考えています…</span>
+              </div>
+            )}
             <div ref={endRef} />
           </div>
+
+          {/* 追加で確認した方が良い質問 */}
+          {followups.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>
+                追加で確認するとよい質問
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {followups.map((f, i) => (
+                  <button key={i} className="followup-chip" onClick={() => ask(f)} disabled={!enabled || loading}>{f}</button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14 }}>

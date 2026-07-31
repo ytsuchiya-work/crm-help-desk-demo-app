@@ -26,3 +26,6 @@ frontend/node_modules/
 
 # ローカルの一時トークン等
 *.token
+
+# ローカルのツールログ等
+.claude/

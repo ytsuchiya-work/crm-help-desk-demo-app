@@ -1,25 +1,21 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Routes, Route, Navigate } from 'react-router-dom'
 import {
-  LayoutDashboard, AlertTriangle, Building2, LifeBuoy, CalendarDays,
-  Rocket, MessageSquareText, Sparkles, Moon, Sun,
+  LayoutDashboard, Building2, LifeBuoy, CalendarDays,
+  MessageSquareText, Sparkles, Moon, Sun,
 } from 'lucide-react'
 import Dashboard from './pages/Dashboard'
-import ChurnRisk from './pages/ChurnRisk'
 import Accounts from './pages/Accounts'
 import Tickets from './pages/Tickets'
 import Schedule from './pages/Schedule'
-import Onboarding from './pages/Onboarding'
 import Feedback from './pages/Feedback'
 import Genie from './pages/Genie'
 
 const NAV = [
   { to: '/dashboard', label: 'ダッシュボード', icon: LayoutDashboard },
-  { to: '/churn', label: 'チャーンリスク', icon: AlertTriangle },
-  { to: '/accounts', label: 'アカウント', icon: Building2 },
+  { to: '/accounts', label: 'アカウント／チャーン', icon: Building2 },
   { to: '/tickets', label: 'ヘルプデスク', icon: LifeBuoy },
   { to: '/schedule', label: 'スケジュール', icon: CalendarDays },
-  { to: '/onboarding', label: 'オンボーディング', icon: Rocket },
   { to: '/feedback', label: 'フィードバック', icon: MessageSquareText },
   { to: '/genie', label: 'Genie', icon: Sparkles },
 ]
@@ -75,11 +71,10 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/churn" element={<ChurnRisk />} />
             <Route path="/accounts" element={<Accounts />} />
+            <Route path="/churn" element={<Navigate to="/accounts" replace />} />
             <Route path="/tickets" element={<Tickets />} />
             <Route path="/schedule" element={<Schedule />} />
-            <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/feedback" element={<Feedback />} />
             <Route path="/genie" element={<Genie />} />
           </Routes>

@@ -117,22 +117,39 @@ def genie_ask(body: GenieAsk):
     answer_text = ""
     table = None
     query_sql = None
+    has_query = False
     for att in (msg.attachments or []):
         if getattr(att, "text", None) and att.text and att.text.content:
             answer_text += att.text.content + "\n"
         if getattr(att, "query", None) and att.query:
+            has_query = True
             query_sql = att.query.query
             if att.query.description:
                 answer_text += att.query.description + "\n"
-            try:
-                result = w.genie.get_message_attachment_query_result(
-                    GENIE_SPACE_ID, conversation_id, msg.id, att.attachment_id)
-                sd = result.statement_response
-                if sd and sd.result and sd.result.data_array:
-                    cols = [c.name for c in sd.manifest.schema.columns]
-                    table = {"columns": cols, "rows": sd.result.data_array}
-            except Exception:
-                pass
+
+    # クエリ結果を取得（SDK 0.41 はメッセージ単位でメタデータを返す。
+    # data_array は空で statement_id 経由の取得が必要なため Statement Execution API で取る）
+    if has_query:
+        try:
+            result = w.genie.get_message_query_result(GENIE_SPACE_ID, conversation_id, msg.id)
+            sd = result.statement_response
+            if sd and sd.manifest and sd.manifest.schema:
+                schema_cols = sd.manifest.schema.columns
+                cols = [c.name for c in schema_cols]
+                types = [getattr(c.type_name, "value", str(c.type_name)) if c.type_name else "STRING"
+                         for c in schema_cols]
+                rows = []
+                if sd.result and sd.result.data_array:
+                    rows = sd.result.data_array
+                elif sd.statement_id:
+                    # 結果本体は Statement Execution API から取得
+                    full = w.statement_execution.get_statement(sd.statement_id)
+                    if full.result and full.result.data_array:
+                        rows = full.result.data_array
+                if rows:
+                    table = {"columns": cols, "types": types, "rows": rows}
+        except Exception:
+            pass
 
     answer = answer_text.strip() or "（回答テキストなし）"
     followups = _followups(answer)

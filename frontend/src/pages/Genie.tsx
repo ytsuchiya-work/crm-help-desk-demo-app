@@ -1,15 +1,67 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, Sparkles, History, Trash2 } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts'
+import { Send, Sparkles, History, Trash2, BarChart3, Table as TableIcon } from 'lucide-react'
 import { api } from '../api'
 import { Card, Badge } from '../components/ui'
 
+type GTable = { columns: string[]; types?: string[]; rows: any[][] }
 type Msg = {
   role: 'user' | 'bot'
   text: string
   query?: string | null
-  table?: { columns: string[]; rows: any[][] } | null
+  table?: GTable | null
   followups?: string[]
   historical?: boolean
+}
+
+const CHART_COLORS = ['#0b7a4b', '#2563a8', '#c9861b', '#9b59b6', '#d13c3c', '#14a86a']
+
+/** クエリ結果からグラフ化可能かを判定し、ラベル列と数値列を返す。 */
+function chartInfo(table: GTable) {
+  const numericTypes = ['INT', 'LONG', 'SHORT', 'BYTE', 'INTEGER', 'BIGINT', 'SMALLINT',
+    'TINYINT', 'FLOAT', 'DOUBLE', 'DECIMAL']
+  const types = table.types || []
+  const numericCols: number[] = []
+  let labelCol = -1
+  table.columns.forEach((_, i) => {
+    const t = (types[i] || '').toUpperCase()
+    const isNum = numericTypes.includes(t) ||
+      // 型不明時は実データで判定
+      (!t && table.rows.every((r) => r[i] == null || !isNaN(Number(r[i]))))
+    if (isNum) numericCols.push(i)
+    else if (labelCol === -1) labelCol = i
+  })
+  // ラベル列 + 数値列が1つ以上、かつ行数が2〜30 のときのみグラフ化
+  if (labelCol === -1 || numericCols.length === 0) return null
+  if (table.rows.length < 2 || table.rows.length > 30) return null
+  return { labelCol, numericCols }
+}
+
+function GenieChart({ table }: { table: GTable }) {
+  const info = chartInfo(table)!
+  const { labelCol, numericCols } = info
+  const data = table.rows.map((r) => {
+    const o: any = { __label: String(r[labelCol] ?? '') }
+    numericCols.forEach((ci) => { o[table.columns[ci]] = Number(r[ci]) })
+    return o
+  })
+  return (
+    <div style={{ height: 260, marginTop: 10 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: -12 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <XAxis dataKey="__label" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} interval={0} angle={-15} textAnchor="end" height={50} />
+          <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+          <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text)' }} />
+          {numericCols.map((ci, k) => (
+            <Bar key={ci} dataKey={table.columns[ci]} fill={CHART_COLORS[k % CHART_COLORS.length]} radius={[3, 3, 0, 0]} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
 }
 
 const SUGGESTIONS = [
@@ -18,6 +70,41 @@ const SUGGESTIONS = [
   '出社検知率が最も低い企業トップ5は？',
   '未解決チケットが多い企業は？',
 ]
+
+/** クエリ結果を表／グラフで切り替え表示する。グラフ化可能な場合は既定でグラフ。 */
+function GenieResult({ table }: { table: GTable }) {
+  const canChart = !!chartInfo(table)
+  const [view, setView] = useState<'chart' | 'table'>(canChart ? 'chart' : 'table')
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      {canChart && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <button className={`btn sm ${view === 'chart' ? 'primary' : ''}`} onClick={() => setView('chart')}>
+            <BarChart3 size={13} /> グラフ
+          </button>
+          <button className={`btn sm ${view === 'table' ? 'primary' : ''}`} onClick={() => setView('table')}>
+            <TableIcon size={13} /> 表
+          </button>
+        </div>
+      )}
+      {view === 'chart' && canChart ? (
+        <GenieChart table={table} />
+      ) : (
+        <div className="table-wrap">
+          <table className="data" style={{ fontSize: 12 }}>
+            <thead><tr>{table.columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+            <tbody>
+              {table.rows.slice(0, 20).map((row, ri) => (
+                <tr key={ri}>{row.map((cell, ci) => <td key={ci}>{String(cell ?? '')}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function Genie() {
   const [enabled, setEnabled] = useState<boolean | null>(null)
@@ -121,16 +208,7 @@ export default function Genie() {
                   </details>
                 )}
                 {m.table && m.table.rows.length > 0 && (
-                  <div className="table-wrap" style={{ marginTop: 10 }}>
-                    <table className="data" style={{ fontSize: 12 }}>
-                      <thead><tr>{m.table.columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
-                      <tbody>
-                        {m.table.rows.slice(0, 20).map((row, ri) => (
-                          <tr key={ri}>{row.map((cell, ci) => <td key={ci}>{String(cell ?? '')}</td>)}</tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <GenieResult table={m.table} />
                 )}
               </div>
             ))}
@@ -159,9 +237,18 @@ export default function Genie() {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-          <input className="input" value={input} onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && ask(input)} placeholder="質問を入力…" disabled={!enabled || loading} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14, alignItems: 'flex-end' }}>
+          <textarea className="input" rows={1} value={input} onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter 単独で送信、Shift+Enter（および IME 変換確定中）は改行
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                ask(input)
+              }
+            }}
+            placeholder="質問を入力…（Enter で送信 / Shift+Enter で改行）"
+            disabled={!enabled || loading}
+            style={{ resize: 'none', minHeight: 40, maxHeight: 120, lineHeight: 1.5 }} />
           <button className="btn primary" onClick={() => ask(input)} disabled={!enabled || loading || !input.trim()}>
             <Send size={16} /> 送信
           </button>

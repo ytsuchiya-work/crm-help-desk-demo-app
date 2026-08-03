@@ -30,9 +30,13 @@ CS/AM チームが日々の運用で使う CRM です。主な価値提案:
   ステータス・優先度）・ステータス更新・返信・新規作成。CSAT・一次応答時間などの KPI も表示。
 - **スケジュール管理**: メンバー横断の週間ビュー。予定を UI 上で追加／編集／削除でき、
   リスク対応の「レコメンド」予定は起点となった問い合わせ（チケット）に紐づけて確認できる。
-- **自然言語分析（Genie）**: Databricks AI/BI Genie Space に接続し、利用状況やチャーンを
-  自然言語で探索（NL → SQL → 結果）。チャット履歴を永続化しセッションを跨いで表示、
-  回答後には追加で確認するとよいフォローアップ質問も提示。
+- **自然言語分析（Genie）**: Databricks AI/BI Genie Space に接続。UI で 2 モードを切替できる:
+  - **チャットモード**（Conversation API）: NL → SQL → 結果を 1 問 1 答で返す。結果は棒グラフ／表で
+    表示（beta の `download-visualization` API で可視化を取得し、ワークスペースで無効な場合は
+    クライアント側のグラフ描画にフォールバック）。Genie 由来のフォローアップ質問も提示。
+  - **エージェントモード**（Genie Agent API, beta）: リサーチプランを立てて複数の SQL を反復実行し、
+    引用付きのレポート（見出し・表・推奨アクション）を生成。推論ステップも可視化。
+  - チャット履歴を UC に永続化しセッションを跨いで表示。
 
 ## 2. 主要画面
 
@@ -43,7 +47,7 @@ CS/AM チームが日々の運用で使う CRM です。主な価値提案:
 | ヘルプデスク | チケット一覧・検索（件名／企業名／ステータス／優先度）・詳細（対応履歴タイムライン）・ステータス更新・返信・新規作成 |
 | スケジュール | メンバー横断の週間ビュー（確定済み／リスク対応レコメンドを色分け）。**UI 上で予定を追加／編集／削除**、レコメンド予定は**紐づく問い合わせ**を確認可 |
 | フィードバック | 製品要望の収集・優先度・ステータス管理 |
-| Genie | 自然言語でのデータ探索（本物の Genie Space に接続）。**チャット履歴を永続化**、生成中インジケータ、フォローアップ質問の提示 |
+| Genie | 自然言語でのデータ探索（本物の Genie Space に接続）。**チャット／エージェントの2モードを切替**。チャットは NL→SQL→結果＋**グラフ**（beta 可視化 API、無効時はクライアント描画にフォールバック）、エージェントは**リサーチプラン＋引用付きレポート**を生成。**チャット履歴を永続化**、生成中インジケータ、フォローアップ質問の提示 |
 
 ライトモード・ダークモードの両方で視認性を最適化しています（右上のトグルで切替）。
 
@@ -203,6 +207,15 @@ databricks apps deploy crm-help-desk-demo \
   レコメンド予定を「解約検討」「高優先度・未解決」チケット優先で紐付けている（`data/generate_data.py`）。
 - **アカウント一覧はチャーン採点込みで返す**: 一覧 API（`/churn/at-risk`）が全アカウントを
   スコア降順で返し、フロントの「アカウント／チャーン」統合ビューはこれを直接描画する。
+- **Genie は 2 つの beta REST API を直接利用**（SDK 未対応のため）:
+  チャットは `POST /api/2.0/genie/spaces/{id}/start-conversation`（`enable_visualization: true`）→
+  ポーリング。クエリ結果本体は `statement_id` 経由で Statement Execution API から取得する
+  （Conversation の結果はメタデータのみ）。可視化は
+  `GET .../attachments/{aid}/download-visualization`（beta）で取得を試み、
+  `FEATURE_DISABLED` 時は None を返してクライアント描画にフォールバック。
+  エージェントは `POST /api/2.0/genie/agents/{id}/responses`（**SSE ストリーム**、`enable_viz: true`）で、
+  `response.output_item.done` の reasoning を推論ステップ、最終 `response.completed` の message を
+  Markdown レポートとして描画する。いずれもワークスペースの Previews 有効化が前提。
 
 ## 9. ディレクトリ構成
 
@@ -224,6 +237,6 @@ crm-help-desk-demo-app/
     └── src/
         ├── App.tsx        # レイアウト・ルーティング・テーマ
         ├── api.ts         # API クライアント
-        ├── components/    # 共通 UI（ui.tsx / AccountDrawer.tsx）
+        ├── components/    # 共通 UI（ui.tsx / AccountDrawer.tsx / Markdown.tsx）
         └── pages/         # Dashboard / Accounts / Tickets / Schedule / Feedback / Genie
 ```

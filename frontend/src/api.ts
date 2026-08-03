@@ -49,6 +49,8 @@ export const api = {
   clearGenieHistory: () => req<any>('/genie/history', { method: 'DELETE' }),
   genieAsk: (message: string, conversation_id?: string) =>
     req<any>('/genie/ask', { method: 'POST', body: JSON.stringify({ message, conversation_id }) }),
+  genieAgent: (message: string, conversation_id?: string) =>
+    req<any>('/genie/agent', { method: 'POST', body: JSON.stringify({ message, conversation_id }) }),
 }
 
 export function yen(n: number | null | undefined): string {
